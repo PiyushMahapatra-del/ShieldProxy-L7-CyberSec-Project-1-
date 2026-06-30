@@ -1,0 +1,28 @@
+================================================================================
+🛡️ SHIELDPROXY L7 - ARCHITECTURAL DESIGN NOTES
+================================================================================
+
+#For my own understanding...
+
+Q: Why is there no root 'index.html' file in this repository? (or WHY DON'T I NEED THAT FOR MY GITHUB PUSH???)
+
+Ans: Unlike traditional static frontend websites (which require a root 'index.html' 
+to serve as an entry point for web hosts), ShieldProxy L7 is a backend-driven 
+Python Application Layer proxy. 
+
+1. SERVER-DRIVEN ROUTING:
+   The application's administrative interface is served dynamically by the 
+   Flask reverse-proxy engine inside 'core/proxy.py' via the '/dashboard' route.
+
+2. INTERFACE ISOLATION:
+   The actual UI code is completely contained within 'interface/dashboard.html'. 
+   When an operator requests the dashboard, the proxy dynamically maps the 
+   internal path and pipes that specific file over the network socket.
+
+3. REMOVAL OF BOILERPLATE:
+   Any root-level 'index.html' file generated during initial environment scaffolding 
+   was a redundant boilerplate asset. It was explicitly deleted to enforce strict 
+   separation of concerns, reduce code clutter, and maintain an enterprise-grade, 
+   production-ready repository structure.
+
+================================================================================
