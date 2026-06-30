@@ -5,7 +5,7 @@ import os
 from datetime import datetime
 
 # Define your production Render application base URL
-RENDER_URL = "https://shieldproxy-l7-cybersec-project-1.onrender.com"
+RENDER_URL = "https://shieldproxy-l7-cybersec-project-1.onrender.com/home"
 
 # Render environment configurations fallback
 TARPIT_DELAY = 2.5

@@ -5,7 +5,7 @@ import json
 import os
 
 # Your live Render URL deployment endpoint
-URL = "https://shieldproxy-l7-cybersec-project-1.onrender.com/"
+URL = "https://shieldproxy-l7-cybersec-project-1.onrender.com/home"
 
 def flood():
     while True:
