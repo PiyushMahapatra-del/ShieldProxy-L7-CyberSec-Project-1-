@@ -9,7 +9,7 @@ from datetime import datetime
 
 app = Flask(__name__)
 # Initialize Flask-SocketIO layer for live streaming logs
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent', ping_timeout=60, ping_interval=25)
 
 # Load configuration from config.json with fallback to defaults
 def load_config():

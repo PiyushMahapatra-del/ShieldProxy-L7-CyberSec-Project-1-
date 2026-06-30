@@ -358,7 +358,11 @@
         const terminalFeed = document.getElementById('terminalFeed');
 
         // Connect back to the dynamic server origin hosting the panel
-        const socket = io();
+        const socket = io({
+            transports: ['polling', 'websocket'],
+            secure: true,
+            rejectUnauthorized: false
+        });
 
         // Clear welcome message on data arrival
         let isFirstLog = true;
