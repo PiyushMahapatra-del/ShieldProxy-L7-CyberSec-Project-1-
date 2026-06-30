@@ -4,24 +4,8 @@ import time
 import json
 import os
 
-# Load proxy port from config.json with fallback
-def load_proxy_port():
-    """Load PROXY_PORT from config.json, fallback to 5000"""
-    config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'core', 'config.json')
-    try:
-        with open(config_path, 'r') as config_file:
-            config = json.load(config_file)
-            port = config.get("PROXY_PORT", 5000)
-            print(f"[✓] Configuration loaded: PROXY_PORT={port}")
-            return port
-    except (FileNotFoundError, json.JSONDecodeError):
-        print(f"[⚠️ WARNING] config.json not found or invalid, using default PROXY_PORT=5000")
-        return 5000
-
-PROXY_PORT = load_proxy_port()
-
-# Directing our weapon at the PROXY server
-URL = f"http://127.0.0.1:{PROXY_PORT}/"
+# Your live Render URL deployment endpoint
+URL = "https://shieldproxy-l7-cybersec-project-1.onrender.com/"
 
 def flood():
     while True:

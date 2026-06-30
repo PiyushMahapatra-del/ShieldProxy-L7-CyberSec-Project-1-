@@ -4,29 +4,17 @@ import json
 import os
 from datetime import datetime
 
-# Load proxy port from config.json with fallback
-def load_config():
-    """Load configuration from config.json, fallback to defaults"""
-    config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'core', 'config.json')
-    try:
-        with open(config_path, 'r') as config_file:
-            config = json.load(config_file)
-            print(f"[✓] Configuration loaded from: {config_path}")
-            return config
-    except (FileNotFoundError, json.JSONDecodeError) as e:
-        print(f"[⚠️ WARNING] config.json not found or invalid, using defaults")
-        return {"PROXY_PORT": 5000, "TARPIT_DELAY": 2.5}
+# Define your production Render application base URL
+RENDER_URL = "https://shieldproxy-l7-cybersec-project-1.onrender.com"
 
-# Load configuration
-config = load_config()
-PROXY_PORT = config.get("PROXY_PORT", 5000)
-TARPIT_DELAY = config.get("TARPIT_DELAY", 2.5)
+# Render environment configurations fallback
+TARPIT_DELAY = 2.5
 
-# Honeypot endpoint URL
-HONEYPOT_URL = f"http://127.0.0.1:{PROXY_PORT}/admin_backup_secret"
+# Honeypot endpoint URL targeting the live Render setup
+HONEYPOT_URL = f"{RENDER_URL}/admin_backup_secret"
 
 print("=" * 80)
-print("🍯 HONEYPOT TRAP TESTER")
+print("🍯 HONEYPOT TRAP TESTER (RENDER ENVIRONMENT)")
 print("=" * 80)
 print(f"[🎯] Target Honeypot: {HONEYPOT_URL}")
 print(f"[⏱️] Expected Tarpit Delay: {TARPIT_DELAY} seconds")
@@ -39,7 +27,7 @@ print(f"[🕐] Request sent at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
 start_time = time.time()
 
 try:
-    response = requests.get(HONEYPOT_URL, timeout=10)
+    response = requests.get(HONEYPOT_URL, timeout=15)
     end_time = time.time()
     
     elapsed_time = end_time - start_time
@@ -68,8 +56,8 @@ try:
     print("=" * 80)
     
 except requests.Timeout:
-    print(f"[❌] Request timed out after 10 seconds")
+    print(f"[❌] Request timed out after 15 seconds")
 except requests.ConnectionError:
-    print(f"[❌] Connection failed - is the proxy running on port {PROXY_PORT}?")
+    print(f"[❌] Connection failed - is the Render deployment active at {RENDER_URL}?")
 except Exception as e:
     print(f"[❌] Error: {e}")
