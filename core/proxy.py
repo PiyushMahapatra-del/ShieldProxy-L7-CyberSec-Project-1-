@@ -1,4 +1,5 @@
 from flask import Flask, request, Response, send_file, jsonify
+from flask_socketio import SocketIO, emit
 import requests
 import time
 import json
@@ -7,6 +8,8 @@ import math
 from datetime import datetime
 
 app = Flask(__name__)
+# Initialize Flask-SocketIO layer for live streaming logs
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Load configuration from config.json with fallback to defaults
 def load_config():
@@ -58,6 +61,15 @@ request_tracker = {}
 
 # Blocked IPs dictionary structure: { "IP_ADDRESS": unlock_timestamp }
 blocked_ips = {}
+
+def log_to_dashboard(message_type, client_ip, details):
+    """Helper function to send live event logs to the dashboard UI"""
+    log_entry = {
+        "type": message_type,  # 'ACCESS', 'BLOCKED', or 'SYSTEM'
+        "ip": client_ip,
+        "details": details
+    }
+    socketio.emit('new_log', log_entry)
 
 def calculate_request_variance(timestamps):
     """
@@ -111,17 +123,6 @@ def log_alert(attacker_ip, total_requests, attack_type="standard", variance=None
     except Exception as e:
         print(f"[⚠️ WARNING] Failed to write to alerts.log: {e}")
 
-@app.route('/dashboard')
-def dashboard():
-    """
-    Serve the admin dashboard HTML interface from interface/ directory
-    """
-    try:
-        dashboard_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'interface', 'dashboard.html')
-        return send_file(dashboard_path)
-    except Exception as e:
-        return f"Dashboard not found: {e}", 404
-
 @app.route('/api/logs')
 def get_logs():
     """
@@ -160,11 +161,20 @@ def get_logs():
             'logs': []
         }), 500
 
+# Main catch-all mapping to process proxy connections
 @app.route('/', defaults={'path': ''}, methods=['GET', 'POST', 'PUT', 'DELETE'])
 @app.route('/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE'])
 def proxy(path):
     user_ip = request.remote_addr
     current_time = time.time()
+
+    # CRITICAL CHANGE: If accessing root route, explicitly serve dashboard layout
+    if path == "" and request.path == "/":
+        try:
+            dashboard_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'interface', 'dashboard.html')
+            return send_file(dashboard_path)
+        except Exception as e:
+            return f"Dashboard not found: {e}", 404
 
     # Check 0: Honeypot trap check - bypasses token count entirely
     if path == "admin_backup_secret" or request.path == "/admin_backup_secret" or "admin_backup_secret" in request.path:
@@ -173,7 +183,10 @@ def proxy(path):
         request_tracker[user_ip].append(current_time)
         total_requests = len(request_tracker[user_ip])
         blocked_ips[user_ip] = current_time + BAN_DURATION
+        
         print(f"[🍯 HONEYPOT TRAP] Malicious bot accessed hidden honeypot /admin_backup_secret from IP: {user_ip}!")
+        log_to_dashboard("BLOCKED", user_ip, "TRIGGERED HONEYPOT: Malicious access to /admin_backup_secret")
+        
         log_alert(user_ip, total_requests, attack_type="honeypot_trap")
         time.sleep(TARPIT_DELAY)
         return "Blocked for malicious threshold breach.", 429
@@ -182,6 +195,9 @@ def proxy(path):
     if user_ip in blocked_ips:
         if current_time < blocked_ips[user_ip]:
             remaining_ban = int(blocked_ips[user_ip] - current_time)
+            
+            log_to_dashboard("BLOCKED", user_ip, f"Rejected request to /{path} (IP is banned for another {remaining_ban}s)")
+            
             # The Red Screen of Doom
             time.sleep(TARPIT_DELAY)
             return """
@@ -195,6 +211,7 @@ def proxy(path):
             # Ban expired, remove them from the blacklist
             del blocked_ips[user_ip]
             request_tracker[user_ip] = []
+            log_to_dashboard("SYSTEM", user_ip, "Ban cooldown expired. Restoring access privileges.")
 
     # Check 2: Rate limiting logic
     if user_ip not in request_tracker:
@@ -211,9 +228,9 @@ def proxy(path):
         total_requests = len(request_tracker[user_ip])
         ban_duration = BAN_DURATION
         attack_type = "standard"
+        log_message = f"Rate Limit Exceeded ({total_requests} reqs)"
         
         # BEHAVIORAL BOT DETECTION: Analyze request timing pattern
-        # Use last 5 requests for analysis (or all if less than 5)
         recent_requests = request_tracker[user_ip][-5:] if len(request_tracker[user_ip]) >= 5 else request_tracker[user_ip]
         
         if len(recent_requests) >= 2:
@@ -223,12 +240,15 @@ def proxy(path):
             if variance is not None and variance < BOT_VARIANCE_THRESHOLD:
                 ban_duration = BAN_DURATION * 2  # Double the ban duration
                 attack_type = "behavioral_bot"
+                log_message = f"BOT BEHAVIOR DETECTED (Variance: {variance:.6f}s). Enhanced Ban Triggered."
                 print(f"[🤖 BOT DETECTED] Highly structured automated bot from IP: {user_ip}!")
                 print(f"[📊 ANALYSIS] Request variance: {variance:.6f}s (threshold: {BOT_VARIANCE_THRESHOLD}s)")
                 print(f"[⚡ ENHANCED BAN] Doubling ban duration to {ban_duration}s for behavioral bot.")
         
         blocked_ips[user_ip] = current_time + ban_duration
         print(f"[🚨 EMERGENCY] DoS Detected from IP: {user_ip}! Blocking for {ban_duration}s.")
+        
+        log_to_dashboard("BLOCKED", user_ip, f"Blocked for {ban_duration}s - Reason: {log_message}")
         
         # LOG THE ALERT with attack type
         log_alert(user_ip, total_requests, attack_type, variance if attack_type == "behavioral_bot" else None)
@@ -238,16 +258,21 @@ def proxy(path):
 
     # If they are safe, route their traffic cleanly to the real website
     print(f"[✔ SAFE] Routing request from {user_ip} to target website.")
-    resp = requests.request(
-        method=request.method,
-        url=f"{TARGET_URL}/{path}",
-        headers={key: value for (key, value) in request.headers if key != 'Host'},
-        data=request.get_data(),
-        cookies=request.cookies,
-        allow_redirects=False
-    )
+    log_to_dashboard("ACCESS", user_ip, f"Forwarded request cleanly to endpoint: /{path}")
     
-    return Response(resp.content, resp.status_code, resp.headers.items())
+    try:
+        resp = requests.request(
+            method=request.method,
+            url=f"{TARGET_URL}/{path}",
+            headers={key: value for (key, value) in request.headers if key != 'Host'},
+            data=request.get_data(),
+            cookies=request.cookies,
+            allow_redirects=False
+        )
+        return Response(resp.content, resp.status_code, resp.headers.items())
+    except requests.exceptions.ConnectionError:
+        log_to_dashboard("SYSTEM", "127.0.0.1", f"Failed forwarding connection to backend target server port {TARGET_SERVER_PORT}")
+        return "Target server unreachable", 502
 
 if __name__ == '__main__':
     print("=" * 80)
@@ -260,4 +285,5 @@ if __name__ == '__main__':
     print(f"[⚙️ CONFIG] Bot Variance Threshold: {BOT_VARIANCE_THRESHOLD} seconds")
     print(f"[⚙️ CONFIG] Tarpit Delay: {TARPIT_DELAY} seconds")
     print("=" * 80)
-    app.run(host='0.0.0.0', port=PROXY_PORT, debug=True, threaded=True)
+    # Using socketio.run wrapper instead of app.run to ensure accurate loop execution
+    socketio.run(app, host='0.0.0.0', port=PROXY_PORT, debug=True, allow_unsafe_werkzeug=True)
